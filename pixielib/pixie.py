@@ -368,7 +368,7 @@ class PIXIE(object):
 
         return param_dict
     
-    def decode(self, param_dict, param_type):
+    def decode(self, param_dict, param_type, skip_pytorch3d = True):
         ''' Decode model parameters to smplx vertices & joints & texture
         Args:
             param_dict: smplx parameters
@@ -439,6 +439,11 @@ class PIXIE(object):
                     }
         # change the order of face keypoints, to be the same as "standard" 68 keypoints
         prediction['face_kpt'] = torch.cat([prediction['face_kpt'][:,-17:], prediction['face_kpt'][:,:-17]], dim=1)
+        
+        if skip_pytorch3d:
+            return prediction
+        
+
         # return albedo map 
         if 'tex' in param_dict.keys() and self.cfg.model.use_tex:
             albedo = self.flametex(param_dict['tex'])

@@ -45,7 +45,7 @@ class Visualizer(object):
         # Set up the renderer for visualization
         self.part = part
         self.rasterizer_type = rasterizer_type
-        self._setup_renderer()
+        # self._setup_renderer()
         # background
         if background is not None:
             self.bg = background

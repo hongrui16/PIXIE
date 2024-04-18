@@ -15,6 +15,7 @@ from pixielib.utils import util
 from pixielib.utils.config import cfg as pixie_cfg
 
 def main(args):
+    args.inputpath = r'C:\Users\hongr\Documents\GMU_research\computerVersion\hand_modeling\smile_data\color.openpose\images'
     savefolder = args.savefolder
     device = args.device
     os.makedirs(savefolder, exist_ok=True)
