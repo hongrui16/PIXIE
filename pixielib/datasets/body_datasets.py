@@ -9,6 +9,7 @@ import scipy
 from skimage.io import imread, imsave
 from skimage.transform import estimate_transform, warp, resize, rescale
 from glob import glob
+from PIL import Image
 
 from ..utils import util
 from . import detectors
@@ -44,6 +45,46 @@ def video2sequence(video_path):
 
     print('video frames are stored in {}'.format(videofolder))
     return imagepath_list
+
+
+def crop_resize_image(image, bbox, scale, target_size):
+    """
+    根据边界框（bbox），缩放因子（scale）和目标尺寸（target_size）裁剪并调整图像尺寸。
+    参数:
+    - image: PIL.Image对象，原始图像。
+    - bbox: 边界框，格式为(left, top, right, bottom)。
+    - scale: 缩放因子，用于确定裁剪的正方形边长。
+    - target_size: 要调整到的新尺寸（宽度和高度相同）。
+    """
+    if isinstance(image, np.ndarray):
+        image = Image.fromarray(image)
+    elif not isinstance(image, Image.Image):
+        raise ValueError('image must be a PIL.Image or numpy.ndarray object')
+    left, top, right, bottom = bbox
+    width = right - left
+    height = bottom - top
+    
+    # 计算边界框的中心
+    center_x = left + width / 2.0
+    center_y = top + height / 2.0
+    
+    # 找出最长边并计算新的裁剪边长
+    long_edge = max(width, height) * scale
+    half_edge = long_edge / 2.0
+    
+    # 计算新的边界框
+    new_left = int(center_x - half_edge)
+    new_top = int(center_y - half_edge)
+    new_right = int(center_x + half_edge)
+    new_bottom = int(center_y + half_edge)
+    
+    # 裁剪图像
+    cropped_image = image.crop((new_left, new_top, new_right, new_bottom))
+    
+    # 调整图像尺寸
+    resized_image = cropped_image.resize((target_size, target_size), Image.ANTIALIAS)
+    
+    return np.array(resized_image)
 
 class TestData(Dataset):
     def __init__(self, testpath, iscrop=False, crop_size=224, hd_size = 1024, scale=1.1, body_detector='rcnn', device='cpu'):
@@ -103,23 +144,25 @@ class TestData(Dataset):
             bbox = [left, top, right, bottom]
             size = max(right - left, bottom - top)
 
-        # crop image
+        ### crop image
         DST_PTS = np.array([[0,0], [0,self.crop_size - 1], [self.crop_size - 1, 0]])
         tform = estimate_transform('similarity', src_pts, DST_PTS)
         dst_image = warp(image, tform.inverse, output_shape=(self.crop_size, self.crop_size))
         dst_image = dst_image.transpose(2,0,1)
-        # hd image
+        ### hd image
         DST_PTS = np.array([[0,0], [0,self.hd_size - 1], [self.hd_size - 1, 0]])
         tform_hd = estimate_transform('similarity', src_pts, DST_PTS)
         hd_image = warp(image, tform_hd.inverse, output_shape=(self.hd_size, self.hd_size))
         hd_image = hd_image.transpose(2,0,1)
+        # dst_image = crop_resize_image(image, bbox, self.scale, self.crop_size)
+
         # crop image
         return {'image': torch.tensor(dst_image).float(),
                 'name': imagename,
                 'imagepath': imagepath,
                 'image_hd': torch.tensor(hd_image).float(),
-                'tform': torch.tensor(tform.params).float(),
-                'original_image': torch.tensor(image.transpose(2,0,1)).float(),
-                'bbox': bbox,
-                'size': size,
+                # 'tform': torch.tensor(tform.params).float(),
+                # 'original_image': torch.tensor(image.transpose(2,0,1)).float(),
+                # 'bbox': bbox,
+                # 'size': size,
                 }

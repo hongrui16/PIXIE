@@ -196,11 +196,11 @@ class PIXIE(object):
         param_dict = {}
 
         # Encode features
-        for key in data.keys():
+        for key in data.keys(): ## only body here
             part = key
             # encode feature
             feature[key] = {}
-            feature[key][part] = self.Encoder[part](data[key]['image'])
+            feature[key][part] = self.Encoder[part](data[key]['image']) # resized image 224*224
             
             # for head/hand image
             if key == 'head' or key == 'hand':

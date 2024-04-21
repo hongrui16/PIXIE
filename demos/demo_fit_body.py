@@ -6,6 +6,7 @@ from tqdm import tqdm
 import argparse
 import cv2
 import open3d as o3d
+import keyboard  # 导入keyboard库
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from pixielib.pixie import PIXIE
@@ -15,6 +16,7 @@ from pixielib.datasets.body_datasets import TestData
 from pixielib.utils import util
 from pixielib.utils.config import cfg as pixie_cfg
 from pixielib.utils.tensor_cropper import transform_points
+from pixielib.datasets.keypoint_names import SMPLX_JOINTS_LIST
 
 class vis_mesh_points():
     def __init__(self, height=1000, width=1000, face_filepath = None):
@@ -26,10 +28,11 @@ class vis_mesh_points():
         all_data = np.load(faces_filepath, allow_pickle=True)
         self.faces = all_data['f']
         self.pcd = o3d.geometry.PointCloud()
+
         
 
 
-    def vis_mesh(self, vertices, output_dir = None, name = None):
+    def vis_mesh(self, vertices, output_dir = None, name = None, hold_vis = True):
         mesh = o3d.geometry.TriangleMesh()
 
         # 设置网格的顶点
@@ -66,28 +69,95 @@ class vis_mesh_points():
             output_filepath = os.path.join(output_dir, f'{name}_mesh.jpg')
             self.vis.capture_screen_image(output_filepath)
 
-    def vis_points(self, points, i, output_dir = None, name = None):
+
+    def vis_points(self, points, i, output_dir = None, name = None, hold_vis = True):
         self.pcd.points = o3d.utility.Vector3dVector(points)
         
         # 如果是第一次迭代，需要添加点云到可视化窗口
         if i == 0:
             self.vis.add_geometry(self.pcd)
         
-        # 更新点云
+        # while True:
+            # 更新点云
         self.vis.update_geometry(self.pcd)
         self.vis.poll_events()
         self.vis.update_renderer()
+        while hold_vis:
+            self.vis.poll_events()
+            self.vis.update_renderer()
+
+            if keyboard.is_pressed('esc'):  # 检查是否按下了ESC键
+                # print("ESC pressed, exiting...")
+                break  # 退出循环
+
+            #     # 捕获ESC按键
+            #     if self.vis.get_view_control().get_interactive_status().escaped:
+            #         break
+            # else:
+            #     break
+
 
         if not output_dir is None and not name is None:
             os.makedirs(output_dir, exist_ok=True)
             # 保存当前视角下的图像
             output_filepath = os.path.join(output_dir, f'{name}_points.jpg')
             self.vis.capture_screen_image(output_filepath)
+        
 
     def destroy(self):
         self.vis.destroy_window()
 
 def main(args):
+    SMPLX_names = ['pelvis', 'left_hip', 'right_hip', 'spine1', 'left_knee', 'right_knee', 'spine2', 'left_ankle', 'right_ankle', 'spine3', 'left_foot', 'right_foot', 'neck', 'left_collar', 'right_collar', 'head', 'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow', 'left_wrist', 'right_wrist', 'jaw', 'left_eye_smplx', 'right_eye_smplx', 'left_index1', 'left_index2', 'left_index3', 'left_middle1', 'left_middle2', 'left_middle3', 'left_pinky1', 'left_pinky2', 'left_pinky3', 'left_ring1', 'left_ring2', 'left_ring3', 'left_thumb1', 'left_thumb2', 'left_thumb3', 'right_index1', 'right_index2', 'right_index3', 'right_middle1', 'right_middle2', 'right_middle3', 'right_pinky1', 'right_pinky2', 'right_pinky3', 'right_ring1', 'right_ring2', 'right_ring3', 'right_thumb1', 'right_thumb2', 'right_thumb3', 'right_eye_brow1', 'right_eye_brow2', 'right_eye_brow3', 'right_eye_brow4', 'right_eye_brow5', 'left_eye_brow5', 'left_eye_brow4', 'left_eye_brow3', 'left_eye_brow2', 'left_eye_brow1', 'nose1', 'nose2', 'nose3', 'nose4', 'right_nose_2', 'right_nose_1', 'nose_middle', 'left_nose_1', 'left_nose_2', 'right_eye1', 'right_eye2', 'right_eye3', 'right_eye4', 'right_eye5', 'right_eye6', 'left_eye4', 'left_eye3', 'left_eye2', 'left_eye1', 'left_eye6', 'left_eye5', 'right_mouth_1', 'right_mouth_2', 'right_mouth_3', 'mouth_top', 'left_mouth_3', 'left_mouth_2', 'left_mouth_1', 'left_mouth_5', 'left_mouth_4', 'mouth_bottom', 'right_mouth_4', 'right_mouth_5', 'right_lip_1', 'right_lip_2', 'lip_top', 'left_lip_2', 'left_lip_1', 'left_lip_3', 'lip_bottom', 'right_lip_3', 'right_contour_1', 'right_contour_2', 'right_contour_3', 'right_contour_4', 'right_contour_5', 'right_contour_6', 'right_contour_7', 'right_contour_8', 'contour_middle', 'left_contour_8', 'left_contour_7', 'left_contour_6', 'left_contour_5', 'left_contour_4', 'left_contour_3', 'left_contour_2', 'left_contour_1', 'head_top', 'left_big_toe', 'left_ear', 'left_eye', 'left_heel', 'left_index', 'left_middle', 'left_pinky', 'left_ring', 'left_small_toe', 'left_thumb', 'nose', 'right_big_toe', 'right_ear', 'right_eye', 'right_heel', 'right_index', 'right_middle', 'right_pinky', 'right_ring', 'right_small_toe', 'right_thumb']
+    print('SMPLX_names', len(SMPLX_names)) ###145
+    facial_selected_keypoints = [
+    "right_eye_brow1", "right_eye_brow2", "right_eye_brow3", "right_eye_brow4", "right_eye_brow5",
+    "left_eye_brow1", "left_eye_brow2", "left_eye_brow3", "left_eye_brow4", "left_eye_brow5",
+    "right_eye1", "right_eye2", "right_eye3", "right_eye4", "right_eye5", "right_eye6",
+    "left_eye1", "left_eye2", "left_eye3", "left_eye4", "left_eye5", "left_eye6",
+    "mouth_top", "mouth_bottom",
+    "right_mouth_1", "right_mouth_2", "right_mouth_3", "right_mouth_4", "right_mouth_5",
+    "left_mouth_1", "left_mouth_2", "left_mouth_3", "left_mouth_4", "left_mouth_5"
+    ]
+    main_body_selected_keypoints = [
+    "spine1",
+    "spine2",
+    "spine3",
+    "neck",
+    "left_collar",
+    "right_collar",
+    "left_shoulder",
+    "right_shoulder",
+    "left_elbow",
+    "right_elbow",
+    "left_wrist",
+    "right_wrist",
+    "jaw",
+    ]
+    hands_selected_keypoints = [
+    "left_thumb1", "left_thumb2", "left_thumb3", "left_thumb",
+    "left_index1", "left_index2", "left_index3", "left_index",
+    "left_middle1", "left_middle2", "left_middle3", "left_middle",
+    "left_ring1", "left_ring2", "left_ring3", "left_ring",
+    "left_pinky1", "left_pinky2", "left_pinky3", "left_pinky",
+    "right_thumb1", "right_thumb2", "right_thumb3", "right_thumb",
+    "right_index1", "right_index2", "right_index3", "right_index",
+    "right_middle1", "right_middle2", "right_middle3", "right_middle",
+    "right_ring1", "right_ring2", "right_ring3", "right_ring",
+    "right_pinky1", "right_pinky2", "right_pinky3", "right_pinky",
+    ]
+
+    selected_keypoints = main_body_selected_keypoints + hands_selected_keypoints + facial_selected_keypoints
+    selected_indicecs = [SMPLX_names.index(k) for k in selected_keypoints]
+    mapping = np.array(selected_indicecs, dtype=np.int32)
+    
+    ## write SMPLX_names to a txt file, every element in a line
+    # with open('SMPLX_names.txt', 'w') as f:
+    #     for item in SMPLX_names:
+    #         f.write("%s\n" % item)
+    # return
+    # return
+
     args.inputpath = r'C:\Users\hongr\Documents\GMU_research\computerVersion\hand_modeling\smile_data\color_openpose\images'
     args.inputpath = r'C:\Users\hongr\Documents\GMU_research\computerVersion\hand_modeling\expose\samples'
     args.rasterizer_type = 'pytorch3d'
@@ -132,7 +202,8 @@ def main(args):
     # return
     # 创建可视化窗口
     mesh_point_visualizer = vis_mesh_points()
-
+    
+    
 
     for i, batch in enumerate(tqdm(testdata, dynamic_ncols=True)):
         util.move_dict_to_device(batch, device)
@@ -171,11 +242,15 @@ def main(args):
             smplx_kpt3d = opdict['smplx_kpt3d']
             points = smplx_kpt3d.cpu().numpy().squeeze()            
             vertices = opdict['vertices'].cpu().numpy().squeeze()
-            # print('points.shape', points.shape) #  (145, 3)
+            print('points.shape', points.shape) #  (145, 3)
             # print('vertices.shape', vertices.shape) #(10475, 3)
 
             # mesh_point_visualizer.vis_mesh(vertices, output_dir, name)
-            mesh_point_visualizer.vis_points(points, i, output_dir, name)
+            # mesh_point_visualizer.vis_points(points, i, output_dir, name)
+            new_points = points[mapping]
+            print('new_points.shape', new_points.shape)
+            mesh_point_visualizer.vis_points(new_points, i, output_dir, name + '_mapped')
+            
 
             # 结束可视化
             
