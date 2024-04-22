@@ -16,7 +16,6 @@ from pixielib.datasets.body_datasets import TestData
 from pixielib.utils import util
 from pixielib.utils.config import cfg as pixie_cfg
 from pixielib.utils.tensor_cropper import transform_points
-from pixielib.datasets.keypoint_names import SMPLX_JOINTS_LIST
 
 class vis_mesh_points():
     def __init__(self, height=1000, width=1000, face_filepath = None):
@@ -209,6 +208,9 @@ def main(args):
         util.move_dict_to_device(batch, device)
         batch['image'] = batch['image'].unsqueeze(0)
         batch['image_hd'] = batch['image_hd'].unsqueeze(0)
+        batch['image'] = torch.cat([batch['image'], batch['image']], dim=0)
+        batch['image_hd'] = torch.cat([batch['image_hd'], batch['image_hd']], dim=0)
+
         name = batch['name']
         name = os.path.basename(name)
         name = name.split('.')[0]
@@ -239,16 +241,15 @@ def main(args):
                         'cam': cam,
                         }
             '''
-            smplx_kpt3d = opdict['smplx_kpt3d']
-            points = smplx_kpt3d.cpu().numpy().squeeze()            
+            points = opdict['joints'].cpu().numpy().squeeze()            
             vertices = opdict['vertices'].cpu().numpy().squeeze()
-            print('points.shape', points.shape) #  (145, 3)
-            # print('vertices.shape', vertices.shape) #(10475, 3)
+            # print('.........points.shape', points.shape) #  (bs, 145, 3)
+            # print('vertices.shape', vertices.shape) #(bs, 10475, 3)
 
             # mesh_point_visualizer.vis_mesh(vertices, output_dir, name)
             # mesh_point_visualizer.vis_points(points, i, output_dir, name)
             new_points = points[mapping]
-            print('new_points.shape', new_points.shape)
+            # print('.......new_points.shape', new_points.shape)
             mesh_point_visualizer.vis_points(new_points, i, output_dir, name + '_mapped')
             
 
@@ -309,6 +310,10 @@ def main(args):
         if args.saveImages:
             for vis_name in visdict.keys():
                 cv2.imwrite(os.path.join(savefolder, name, f'{name}_{vis_name}.jpg'), util.tensor2image(visdict[vis_name][0]))
+        
+        print('')
+        break
+
     mesh_point_visualizer.destroy()
     print(f'-- please check the results in {savefolder}')
 

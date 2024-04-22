@@ -368,7 +368,7 @@ class PIXIE(object):
 
         return param_dict
     
-    def decode(self, param_dict, param_type, skip_pytorch3d = True):
+    def decode(self, param_dict, param_type, skip_pytorch3d = True, return_joints_only = False):
         ''' Decode model parameters to smplx vertices & joints & texture
         Args:
             param_dict: smplx parameters
@@ -409,7 +409,16 @@ class PIXIE(object):
                     euler_pose_curr = euler_pose[:,i]
                     euler_pose_curr[euler_pose_curr!=torch.clamp(euler_pose_curr, min=-max_angle*np.pi/180, max=max_angle*np.pi/180)] = 0.
                 param_dict['body_pose'][:,pose_ind] = converter.batch_euler2matrix(euler_pose)
-        
+
+        # print("param_dict['shape'].shape", param_dict['shape'].shape) #torch.Size([bs, 200])
+        # print("param_dict['exp'].shape", param_dict['exp'].shape) #torch.Size([bs, 50])
+        # print("param_dict['global_pose'].shape", param_dict['global_pose'].shape) # torch.Size([bs, 1, 3, 3])
+        # print("param_dict['body_pose'].shape", param_dict['body_pose'].shape) #torch.Size([bs, 21, 3, 3])
+        # print("param_dict['jaw_pose'].shape", param_dict['jaw_pose'].shape) #torch.Size([bs, 1, 3, 3])
+        # print("param_dict['left_hand_pose'].shape", param_dict['left_hand_pose'].shape) #torch.Size([bs, 15, 3, 3])
+        # print("param_dict['right_hand_pose'].shape", param_dict['right_hand_pose'].shape) #torch.Size([bs, 15, 3, 3])
+
+
         # SMPLX
         verts, landmarks, joints = self.smplx(
             shape_params=param_dict['shape'],
@@ -419,8 +428,20 @@ class PIXIE(object):
             jaw_pose=param_dict['jaw_pose'],
             left_hand_pose=param_dict['left_hand_pose'],
             right_hand_pose=param_dict['right_hand_pose'])
+
+        prediction = {
+            'vertices': verts,
+            'joints': joints,
+            'landmarks': landmarks
+            }
+        if return_joints_only:
+            return prediction
+        
         smplx_kpt3d = joints.clone()
 
+        # print("verts.shape", verts.shape) #torch.Size([bs, 10475, 3])
+        # print("landmarks.shape", landmarks.shape) # torch.Size([bs, 68, 3])
+        # print("joints.shape", joints.shape) # torch.Size([bs, 145, 3])
         # projection
         cam = param_dict[param_type + '_cam']
         trans_verts = util.batch_orth_proj(verts, cam)

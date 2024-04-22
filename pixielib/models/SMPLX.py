@@ -218,7 +218,7 @@ class SMPLX(nn.Module):
         full_pose = torch.cat([global_pose, body_pose,
                                 jaw_pose, eye_pose,
                                 left_hand_pose, right_hand_pose], dim=1)
-        # print('shape_components:', shape_components.shape) ## torch.Size([1, 250])
+        # print('shape_components:', shape_components.shape) ## torch.Size([bs, 250])
         template_vertices = self.v_template.unsqueeze(0).expand(batch_size, -1, -1)
         # smplx
         vertices, joints = lbs(shape_components, full_pose, template_vertices,
@@ -226,7 +226,7 @@ class SMPLX(nn.Module):
                           self.J_regressor, self.parents,
                           self.lbs_weights, dtype=self.dtype,
                           pose2rot = False)
-        #print('vertices:', vertices.shape, 'joints:', joints.shape) ### vertices: torch.Size([1, 10475, 3]) joints: torch.Size([1, 55, 3])
+        #print('vertices:', vertices.shape, 'joints:', joints.shape) ### vertices: torch.Size([bs, 10475, 3]) joints: torch.Size([bs, 55, 3])
         # face dynamic landmarks
         lmk_faces_idx = self.lmk_faces_idx.unsqueeze(dim=0).expand(batch_size, -1)
         lmk_bary_coords = self.lmk_bary_coords.unsqueeze(dim=0).expand(batch_size, -1, -1)
@@ -242,17 +242,17 @@ class SMPLX(nn.Module):
         landmarks = vertices2landmarks(vertices, self.faces_tensor,
                                        lmk_faces_idx,
                                        lmk_bary_coords)
-        # print('landmarks:', landmarks.shape) ## torch.Size([1, 68, 3])
-        # print('joints:', joints.shape) ## torch.Size([1, 55, 3]
+        # print('landmarks:', landmarks.shape) ## torch.Size([bs, 68, 3])
+        # print('joints:', joints.shape) ## torch.Size([bs, 55, 3]
         final_joint_set = [joints, landmarks]
         if hasattr(self, 'extra_joint_selector'):
             # Add any extra joints that might be needed
             extra_joints = self.extra_joint_selector(vertices, self.faces_tensor)
-            # print('extra_joints:', extra_joints.shape) ## torch.Size([1, 22, 3])
+            # print('extra_joints:', extra_joints.shape) ## torch.Size([bs, 22, 3])
             final_joint_set.append(extra_joints)
         # Create the final joint set
         joints = torch.cat(final_joint_set, dim=1)
-        # print('joints:', joints.shape) ## torch.Size([1, 145, 3])
+        # print('joints:', joints.shape) ## torch.Size([bs, 145, 3])
         if self.use_joint_regressor: #True
             # print('use_joint_regressor') 
             reg_joints = torch.einsum(
