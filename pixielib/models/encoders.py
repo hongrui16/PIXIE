@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 
 class ResnetEncoder(nn.Module):
-    def __init__(self, append_layers = None):
+    def __init__(self, append_layers = None, device = 'cpu'):
         super(ResnetEncoder, self).__init__()
         from . import resnet
         # feature_size = 2048
@@ -15,8 +15,10 @@ class ResnetEncoder(nn.Module):
         # for normalize input images
         MEAN = [0.485, 0.456, 0.406]
         STD = [0.229, 0.224, 0.225]
-        self.register_buffer('MEAN', torch.tensor(MEAN)[None,:,None,None])
-        self.register_buffer('STD', torch.tensor(STD)[None,:,None,None])
+        # Register MEAN and STD as buffers and move them to CUDA
+        self.register_buffer('MEAN', torch.tensor(MEAN).view(1, 3, 1, 1).to(device))
+        self.register_buffer('STD', torch.tensor(STD).view(1, 3, 1, 1).to(device))
+
         
     def forward(self, inputs):
         ''' inputs: [bz, 3, h, w], range: [0,1]
@@ -46,7 +48,7 @@ class MLP(nn.Module):
         return outs
 
 class HRNEncoder(nn.Module):
-    def __init__(self, append_layers = None):
+    def __init__(self, append_layers = None, device = 'cpu'):
         super(HRNEncoder, self).__init__()
         from . import hrnet
         self.feature_dim = 2048
@@ -56,13 +58,21 @@ class HRNEncoder(nn.Module):
         # for normalize input images
         MEAN = [0.485, 0.456, 0.406]
         STD = [0.229, 0.224, 0.225]
-        self.register_buffer('MEAN', torch.tensor(MEAN)[None,:,None,None])
-        self.register_buffer('STD', torch.tensor(STD)[None,:,None,None])
+        # Register MEAN and STD as buffers and move them to CUDA
+        self.register_buffer('MEAN', torch.tensor(MEAN).view(1, 3, 1, 1).to(device))
+        self.register_buffer('STD', torch.tensor(STD).view(1, 3, 1, 1).to(device))
+
         
     def forward(self, inputs):
         ''' inputs: [bz, 3, h, w], range: [0,1]
         '''
-        inputs = (inputs - self.MEAN)/self.STD 
+        ## print the device of the inputs
+        print('inputs.device:', inputs.device)
+
+        inputs = (inputs - self.MEAN)/self.STD ## correct this, rewrite the normalization
+        
+
+
         features = self.encoder(inputs)['concat']
         if self.append_layers:
             features = self.last_op(features)

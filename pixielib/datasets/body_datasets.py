@@ -11,18 +11,12 @@ from skimage.transform import estimate_transform, warp, resize, rescale
 from glob import glob
 from PIL import Image
 
-from ..utils import util
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), './')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from . import detectors
-from ..utils import array_cropper
+from utils.image_process import crop_resize_image, crop_resize_image_batch, pad_resize_image
 
-def build_dataloader(testpath, batch_size=1):
-    data_list = []
-    dataset = TestData(testpath = testpath)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False,
-                            num_workers=1,
-                            pin_memory=True,
-                            drop_last =False)
-    return dataset, dataloader
 
 def video2sequence(video_path):
     print('extract frames from video: {}...'.format(video_path))
@@ -46,48 +40,8 @@ def video2sequence(video_path):
     print('video frames are stored in {}'.format(videofolder))
     return imagepath_list
 
-
-def crop_resize_image(image, bbox, scale, target_size):
-    """
-    根据边界框（bbox），缩放因子（scale）和目标尺寸（target_size）裁剪并调整图像尺寸。
-    参数:
-    - image: PIL.Image对象，原始图像。
-    - bbox: 边界框，格式为(left, top, right, bottom)。
-    - scale: 缩放因子，用于确定裁剪的正方形边长。
-    - target_size: 要调整到的新尺寸（宽度和高度相同）。
-    """
-    if isinstance(image, np.ndarray):
-        image = Image.fromarray(image)
-    elif not isinstance(image, Image.Image):
-        raise ValueError('image must be a PIL.Image or numpy.ndarray object')
-    left, top, right, bottom = bbox
-    width = right - left
-    height = bottom - top
-    
-    # 计算边界框的中心
-    center_x = left + width / 2.0
-    center_y = top + height / 2.0
-    
-    # 找出最长边并计算新的裁剪边长
-    long_edge = max(width, height) * scale
-    half_edge = long_edge / 2.0
-    
-    # 计算新的边界框
-    new_left = int(center_x - half_edge)
-    new_top = int(center_y - half_edge)
-    new_right = int(center_x + half_edge)
-    new_bottom = int(center_y + half_edge)
-    
-    # 裁剪图像
-    cropped_image = image.crop((new_left, new_top, new_right, new_bottom))
-    
-    # 调整图像尺寸
-    resized_image = cropped_image.resize((target_size, target_size), Image.ANTIALIAS)
-    
-    return np.array(resized_image)
-
 class TestData(Dataset):
-    def __init__(self, testpath, iscrop=False, crop_size=224, hd_size = 1024, scale=1.1, body_detector='rcnn', device='cpu'):
+    def __init__(self, testpath, iscrop=False, crop_size=224, hd_size = 512, scale=1.1, body_detector='rcnn', device='cpu'):
         '''
             testpath: folder, imagepath_list, image path, video path
         '''
@@ -126,7 +80,8 @@ class TestData(Dataset):
         image = imread(imagepath)[:,:,:3]/255.
         h, w, _ = image.shape
 
-        image_tensor = torch.tensor(image.transpose(2,0,1), dtype=torch.float32)[None, ...]
+        image_tensor = torch.tensor(image.transpose(2,0,1), dtype=torch.float32)[None, ...]# size of image_tensor: [1, 3, h, w]
+        
         if self.iscrop:
             bbox = self.detector.run(image_tensor)
             if bbox is None:
@@ -166,3 +121,8 @@ class TestData(Dataset):
                 # 'bbox': bbox,
                 # 'size': size,
                 }
+
+
+if __name__ == "__main__":
+    testpath = r'C:\Users\hongr\Documents\GMU_research\computerVersion\hand_modeling\PIXIE\TestSamples\body\pexels-andrea-piacquadio-972937.jpg'
+

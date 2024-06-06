@@ -7,6 +7,8 @@ import argparse
 import cv2
 import open3d as o3d
 import keyboard  # 导入keyboard库
+import plotly.graph_objects as go
+import shutil
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from pixielib.pixie import PIXIE
@@ -66,6 +68,7 @@ class vis_mesh_points():
             os.makedirs(output_dir, exist_ok=True)
             # 保存当前视角下的图像
             output_filepath = os.path.join(output_dir, f'{name}_mesh.jpg')
+            print(f'save image to {output_filepath}')
             self.vis.capture_screen_image(output_filepath)
 
 
@@ -106,8 +109,56 @@ class vis_mesh_points():
     def destroy(self):
         self.vis.destroy_window()
 
+
+
+def plotly_save_point_cloud(points, file_path='plotly_3d_plot.html'):
+    fig = go.Figure(data=[go.Scatter3d(
+        x=points[:, 0],
+        y=points[:, 1],
+        z=points[:, 2],
+        mode='markers',
+        marker=dict(
+            size=5,
+            color=points[:, 2],  # color points by Z value
+            colorscale='Viridis',  # choose a colorscale
+            opacity=0.8
+        )
+    )])
+
+    fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
+    fig.write_html(file_path)  # Save as HTML
+
+
 def main(args):
-    SMPLX_names = ['pelvis', 'left_hip', 'right_hip', 'spine1', 'left_knee', 'right_knee', 'spine2', 'left_ankle', 'right_ankle', 'spine3', 'left_foot', 'right_foot', 'neck', 'left_collar', 'right_collar', 'head', 'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow', 'left_wrist', 'right_wrist', 'jaw', 'left_eye_smplx', 'right_eye_smplx', 'left_index1', 'left_index2', 'left_index3', 'left_middle1', 'left_middle2', 'left_middle3', 'left_pinky1', 'left_pinky2', 'left_pinky3', 'left_ring1', 'left_ring2', 'left_ring3', 'left_thumb1', 'left_thumb2', 'left_thumb3', 'right_index1', 'right_index2', 'right_index3', 'right_middle1', 'right_middle2', 'right_middle3', 'right_pinky1', 'right_pinky2', 'right_pinky3', 'right_ring1', 'right_ring2', 'right_ring3', 'right_thumb1', 'right_thumb2', 'right_thumb3', 'right_eye_brow1', 'right_eye_brow2', 'right_eye_brow3', 'right_eye_brow4', 'right_eye_brow5', 'left_eye_brow5', 'left_eye_brow4', 'left_eye_brow3', 'left_eye_brow2', 'left_eye_brow1', 'nose1', 'nose2', 'nose3', 'nose4', 'right_nose_2', 'right_nose_1', 'nose_middle', 'left_nose_1', 'left_nose_2', 'right_eye1', 'right_eye2', 'right_eye3', 'right_eye4', 'right_eye5', 'right_eye6', 'left_eye4', 'left_eye3', 'left_eye2', 'left_eye1', 'left_eye6', 'left_eye5', 'right_mouth_1', 'right_mouth_2', 'right_mouth_3', 'mouth_top', 'left_mouth_3', 'left_mouth_2', 'left_mouth_1', 'left_mouth_5', 'left_mouth_4', 'mouth_bottom', 'right_mouth_4', 'right_mouth_5', 'right_lip_1', 'right_lip_2', 'lip_top', 'left_lip_2', 'left_lip_1', 'left_lip_3', 'lip_bottom', 'right_lip_3', 'right_contour_1', 'right_contour_2', 'right_contour_3', 'right_contour_4', 'right_contour_5', 'right_contour_6', 'right_contour_7', 'right_contour_8', 'contour_middle', 'left_contour_8', 'left_contour_7', 'left_contour_6', 'left_contour_5', 'left_contour_4', 'left_contour_3', 'left_contour_2', 'left_contour_1', 'head_top', 'left_big_toe', 'left_ear', 'left_eye', 'left_heel', 'left_index', 'left_middle', 'left_pinky', 'left_ring', 'left_small_toe', 'left_thumb', 'nose', 'right_big_toe', 'right_ear', 'right_eye', 'right_heel', 'right_index', 'right_middle', 'right_pinky', 'right_ring', 'right_small_toe', 'right_thumb']
+    SMPLX_names = ['pelvis', 'left_hip', 'right_hip', 'spine1', 'left_knee', 
+                   'right_knee', 'spine2', 'left_ankle', 'right_ankle', 'spine3', 
+                   'left_foot', 'right_foot', 'neck', 'left_collar', 'right_collar',
+                     'head', 'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow', 
+                     'left_wrist', 'right_wrist', 'jaw', 'left_eye_smplx', 'right_eye_smplx', 
+                     'left_index1', 'left_index2', 'left_index3', 'left_middle1', 'left_middle2', 
+                     'left_middle3', 'left_pinky1', 'left_pinky2', 'left_pinky3', 'left_ring1', 
+                     'left_ring2', 'left_ring3', 'left_thumb1', 'left_thumb2', 'left_thumb3', 
+                     'right_index1', 'right_index2', 'right_index3', 'right_middle1', 'right_middle2', 
+                     'right_middle3', 'right_pinky1', 'right_pinky2', 'right_pinky3', 'right_ring1', 
+                     'right_ring2', 'right_ring3', 'right_thumb1', 'right_thumb2', 'right_thumb3', 
+                     'right_eye_brow1', 'right_eye_brow2', 'right_eye_brow3', 'right_eye_brow4', 'right_eye_brow5', 
+                     'left_eye_brow5', 'left_eye_brow4', 'left_eye_brow3', 'left_eye_brow2', 'left_eye_brow1', 
+                     'nose1', 'nose2', 'nose3', 'nose4', 'right_nose_2', 'right_nose_1', 'nose_middle', 
+                     'left_nose_1', 'left_nose_2', 'right_eye1', 'right_eye2', 'right_eye3', 
+                     'right_eye4', 'right_eye5', 'right_eye6', 'left_eye4', 'left_eye3', 'left_eye2', 
+                     'left_eye1', 'left_eye6', 'left_eye5', 'right_mouth_1', 'right_mouth_2', 
+                     'right_mouth_3', 'mouth_top', 'left_mouth_3', 'left_mouth_2', 'left_mouth_1', 
+                     'left_mouth_5', 'left_mouth_4', 'mouth_bottom', 'right_mouth_4', 'right_mouth_5', 
+                     'right_lip_1', 'right_lip_2', 'lip_top', 'left_lip_2', 'left_lip_1', 'left_lip_3', 
+                     'lip_bottom', 'right_lip_3', 'right_contour_1', 'right_contour_2', 'right_contour_3', 
+                     'right_contour_4', 'right_contour_5', 'right_contour_6', 'right_contour_7', 'right_contour_8', 
+                     'contour_middle', 'left_contour_8', 'left_contour_7', 'left_contour_6', 'left_contour_5', 
+                     'left_contour_4', 'left_contour_3', 'left_contour_2', 'left_contour_1', 'head_top', 
+                     'left_big_toe', 'left_ear', 'left_eye', 'left_heel', 'left_index', 'left_middle', 
+                     'left_pinky', 'left_ring', 'left_small_toe', 'left_thumb', 'nose', 'right_big_toe', 
+                     'right_ear', 'right_eye', 'right_heel', 'right_index', 'right_middle', 'right_pinky', 
+                     'right_ring', 'right_small_toe', 'right_thumb']
+    
     print('SMPLX_names', len(SMPLX_names)) ###145
     facial_selected_keypoints = [
     "right_eye_brow1", "right_eye_brow2", "right_eye_brow3", "right_eye_brow4", "right_eye_brow5",
@@ -159,12 +210,17 @@ def main(args):
 
     args.inputpath = r'C:\Users\hongr\Documents\GMU_research\computerVersion\hand_modeling\smile_data\color_openpose\images'
     args.inputpath = r'C:\Users\hongr\Documents\GMU_research\computerVersion\hand_modeling\expose\samples'
+    args.inputpath = r'C:\Users\hongr\Documents\GMU_research\computerVersion\hand_modeling\signLangWord\WLASL_examples\images'
+
     args.rasterizer_type = 'pytorch3d'
     args.lightTex = False
     savefolder = args.savefolder
     device = args.device
+
+    debug = False
+
     os.makedirs(savefolder, exist_ok=True)
-    output_dir = 'output'
+    output_dir = 'output_WLASL'
     os.makedirs(output_dir, exist_ok=True)
     # check env
     if not torch.cuda.is_available():
@@ -200,16 +256,22 @@ def main(args):
     # print('faces.shape', faces.shape)  
     # return
     # 创建可视化窗口
-    mesh_point_visualizer = vis_mesh_points()
+    if not debug:
+        mesh_point_visualizer = vis_mesh_points()
     
     
 
     for i, batch in enumerate(tqdm(testdata, dynamic_ncols=True)):
-        util.move_dict_to_device(batch, device)
-        batch['image'] = batch['image'].unsqueeze(0)
-        batch['image_hd'] = batch['image_hd'].unsqueeze(0)
-        batch['image'] = torch.cat([batch['image'], batch['image']], dim=0)
-        batch['image_hd'] = torch.cat([batch['image_hd'], batch['image_hd']], dim=0)
+        
+        batch['image'] = batch['image'].unsqueeze(0).to(device)
+        batch['image_hd'] = batch['image_hd'].unsqueeze(0).to(device)
+        img_filepath = batch['imagepath']
+        print(f'processing {img_filepath}, {i}/{len(testdata)}')
+        out_ori_img_path = os.path.join(output_dir, os.path.basename(img_filepath))
+        shutil.copyfile(img_filepath, out_ori_img_path)
+
+        # batch['image'] = torch.cat([batch['image'], batch['image']], dim=0)
+        # batch['image_hd'] = torch.cat([batch['image_hd'], batch['image_hd']], dim=0)
 
         name = batch['name']
         name = os.path.basename(name)
@@ -221,44 +283,47 @@ def main(args):
         data = {
             'body': batch
         }
-        try:
-            param_dict = pixie.encode(data, threthold=True, keep_local=True, copy_and_paste=False)
-            
-            # param_dict = pixie.encode(data, threthold=True, keep_local=True, copy_and_paste=True)
-            # only use body params to get smplx output. TODO: we can also show the results of cropped head/hands
-            moderator_weight = param_dict['moderator_weight']
-            codedict = param_dict['body']
+        param_dict = pixie.encode(data, threthold=True, keep_local=True, copy_and_paste=False)
+        
+        # param_dict = pixie.encode(data, threthold=True, keep_local=True, copy_and_paste=True)
+        # only use body params to get smplx output. TODO: we can also show the results of cropped head/hands
+        moderator_weight = param_dict['moderator_weight']
+        codedict = param_dict['body']
 
-            opdict = pixie.decode(codedict, param_type='body', skip_pytorch3d = skip_pytorch3d)
-            '''
-            opdict = {
-                        'vertices': verts,
-                        'transformed_vertices': trans_verts,
-                        'face_kpt': predicted_landmarks,
-                        'smplx_kpt': predicted_joints,
-                        'smplx_kpt3d': smplx_kpt3d,
-                        'joints': joints,
-                        'cam': cam,
-                        }
-            '''
-            points = opdict['joints'].cpu().numpy().squeeze()            
-            vertices = opdict['vertices'].cpu().numpy().squeeze()
-            # print('.........points.shape', points.shape) #  (bs, 145, 3)
-            # print('vertices.shape', vertices.shape) #(bs, 10475, 3)
-
-            # mesh_point_visualizer.vis_mesh(vertices, output_dir, name)
+        opdict = pixie.decode(codedict, param_type='body', skip_pytorch3d = skip_pytorch3d)
+        '''
+        opdict = {
+                    'vertices': verts,
+                    'transformed_vertices': trans_verts,
+                    'face_kpt': predicted_landmarks,
+                    'smplx_kpt': predicted_joints,
+                    'smplx_kpt3d': smplx_kpt3d,
+                    'joints': joints,
+                    'cam': cam,
+                    }
+        '''
+        points = opdict['joints'].cpu().numpy().squeeze()            
+        vertices = opdict['vertices'].cpu().numpy().squeeze()
+        # print('.........points.shape', points.shape) #  (bs, 145, 3)
+        # print('vertices.shape', vertices.shape) #(bs, 10475, 3)
+        new_points = points[mapping]
+        if not debug:
+            # plotly_save_point_cloud(points, file_path=f'plotly_3d_plot_{name}.html')
+            mesh_point_visualizer.vis_mesh(vertices, output_dir, name, hold_vis=False)
             # mesh_point_visualizer.vis_points(points, i, output_dir, name)
-            new_points = points[mapping]
+            
             # print('.......new_points.shape', new_points.shape)
-            mesh_point_visualizer.vis_points(new_points, i, output_dir, name + '_mapped')
-            
+            # plotly_save_point_cloud(new_points, file_path=f'plotly_3d_plot_{name}_mapped.html')
 
-            # 结束可视化
-            
-        except Exception as e:
-            continue
+        # print('.......new_points.shape', new_points.shape)
+        # mesh_point_visualizer.vis_points(new_points, i, output_dir, name + '_mapped')
+        
 
+        # 结束可视化
+        
 
+        if i > 50:
+            break
 
         if skip_pytorch3d:
             continue
@@ -313,9 +378,9 @@ def main(args):
         
         print('')
         break
-
-    mesh_point_visualizer.destroy()
-    print(f'-- please check the results in {savefolder}')
+    if not debug:
+        mesh_point_visualizer.destroy()
+    # print(f'-- please check the results in {savefolder}')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PIXIE')

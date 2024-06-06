@@ -90,6 +90,7 @@ def vertex_normals(vertices, faces):
 def batch_orth_proj(X, camera):
     '''
         X is N x num_verts x 3
+        camera is N x 3
     '''
     camera = camera.clone().view(-1, 1, 3)
     X_trans = X[:, :, :2] + camera[:, :, 1:]

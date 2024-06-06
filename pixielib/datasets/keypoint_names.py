@@ -10,7 +10,6 @@ __all__ = [
     'KEYPOINT_PART_CONNECTION_DICTS',
 ]
 
-
 KEYPOINT_PARTS = {'pelvis': 'body,torso',
                   'left_hip': 'body,torso',
                   'right_hip': 'body,torso',

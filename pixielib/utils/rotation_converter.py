@@ -312,13 +312,13 @@ def _compute_euler_from_matrix(dcm, seq='xyz', extrinsic=False):
     n3 = _elementary_basis_vector(seq[2])
 
     # Step 2
-    sl = torch.dot(torch.cross(n1, n2), n3)
+    sl = torch.dot(torch.cross(n1, n2, dim=0), n3)
     cl = torch.dot(n1, n3)
 
     # angle offset is lambda from the paper referenced in [2] from docstring of
     # `as_euler` function
     offset = torch.atan2(sl, cl)
-    c = torch.stack((n2, torch.cross(n1, n2), n1)).type(dcm.dtype).to(device)
+    c = torch.stack((n2, torch.cross(n1, n2, dim=0), n1)).type(dcm.dtype).to(device)
 
     # Step 3
     rot = torch.tensor([
