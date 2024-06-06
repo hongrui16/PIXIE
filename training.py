@@ -157,6 +157,7 @@ class Worker:
         loss_epoch = []
         for idx, batch in enumerate(tbar):
             self.optimizer.zero_grad()
+            
             image = batch['image'].to(self.device)
             # image_name_prefix = batch['name']
 

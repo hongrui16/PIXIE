@@ -67,7 +67,7 @@ class HRNEncoder(nn.Module):
         ''' inputs: [bz, 3, h, w], range: [0,1]
         '''
         ## print the device of the inputs
-        print('inputs.device:', inputs.device)
+        # print('inputs.device:', inputs.device)
 
         inputs = (inputs - self.MEAN)/self.STD ## correct this, rewrite the normalization
         
