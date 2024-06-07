@@ -20,7 +20,7 @@ from utils.image_process import crop_resize_image, crop_resize_image_batch, pad_
 
 
 class OpenPoseDataset(Dataset):
-    def __init__(self, data_dir, split = None, crop_size=224, hd_size = 512, logger = None):
+    def __init__(self, data_dir, split = None, crop_size=224, hd_size = 512, logger = None, args = None):
         '''
             testpath: folder, imagepath_list, image path, video path
         '''
@@ -33,17 +33,33 @@ class OpenPoseDataset(Dataset):
         if split is None:
             self.img_dir = os.path.join(data_dir, 'images')
             self.keypoint_dir = os.path.join(data_dir, 'keypoints')
+            self.joints_3d_dir = os.path.join(data_dir, 'joints_3d')
         else:
             self.img_dir = os.path.join(data_dir, split, 'images')
             self.keypoint_dir = os.path.join(data_dir, split, 'keypoints')
+            self.joints_3d_dir = os.path.join(data_dir, split, 'joints_3d')
+
         
         if os.path.isdir(self.img_dir):
             self.imagepath_list = glob(self.img_dir + '/*.jpg') +  glob(self.img_dir + '/*.png') + glob(self.img_dir + '/*.jpeg')
         else:
             self.logger.info(f'please check the input dir: {self.img_dir}')
             exit()
+            
+        for img_path in self.imagepath_list:
+            img_name = os.path.basename(img_path).split('.')[0]
+            keypoint_path = os.path.join(self.keypoint_dir, img_name + '_keypoints.json')
+            if not os.path.exists(keypoint_path):
+                # self.logger.info(f'keypoint file not found: {keypoint_path}')
+                self.imagepath_list.remove(img_path)
         
         self.logger.info(f'{self.img_dir} has {len(self.imagepath_list)} images')
+
+        if args is not None:
+            if args.fast_train:
+                num_imgs = 8 if len(self.imagepath_list) > 8 else len(self.imagepath_list)
+                self.imagepath_list = self.imagepath_list[:num_imgs]
+                self.logger.info(f'fast_train: {args.fast_train}, only use {num_imgs} images for training')
         # self.imagepath_list = sorted(self.imagepath_list)
 
 
@@ -68,6 +84,14 @@ class OpenPoseDataset(Dataset):
 
         # get keypoints
         keypoint_path = os.path.join(self.keypoint_dir, img_name + '_keypoints.json')
+
+        ## 3d joint
+        joints_3d_path = os.path.join(self.joints_3d_dir, img_name + '_joints.npy')
+        if os.path.exists(joints_3d_path):
+            joints_3d = np.load(joints_3d_path)
+            joints_3d = torch.tensor(joints_3d).float()
+
+        # joint
         with open(keypoint_path) as f:
             data = json.load(f)
             for person in data['people']:
@@ -95,7 +119,7 @@ class OpenPoseDataset(Dataset):
         
 
         # crop image
-        return {'image': image,
+        data = {'image': image,
                 'name': img_name,
                 'imagepath': img_path,
                 # 'image_hd': None,
@@ -104,7 +128,9 @@ class OpenPoseDataset(Dataset):
                 'hand_right_keypoints_2d': torch.tensor(hand_right_kpts).float(),
                 'face_keypoints_2d': torch.tensor(face_kpts).float(),
                 }
-
+        if os.path.exists(joints_3d_path):
+            data['joints_3d'] = joints_3d
+        return data
 
 if __name__ == "__main__":
     testpath = r'C:\Users\hongr\Documents\GMU_research\computerVersion\hand_modeling\PIXIE\TestSamples\body\pexels-andrea-piacquadio-972937.jpg'

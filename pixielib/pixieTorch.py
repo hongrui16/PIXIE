@@ -22,6 +22,13 @@ import torch.nn as nn
 import numpy as np
 from skimage.io import imread
 import cv2
+import math
+import kornia
+import os, sys
+
+import logging
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), './')))
 
 from .models.encoders import ResnetEncoder, MLP, HRNEncoder
 from .models.moderators import TempSoftmaxFusion
@@ -31,29 +38,48 @@ from .utils import util
 from .utils import rotation_converter as converter
 from .utils import tensor_cropper
 from .utils.config import cfg
+from .utils.image_process import crop_resize_image_batch
 
-class PIXIE(object):
-    def __init__(self, config=None, device='cuda:0', freeze_model = False):
+class PIXIE(nn.Module):
+    def __init__(self, config=None, device='cpu', freeze_model=False, mode='train', logger=None, input_size=224, project_type='orthogonal'):
+        super(PIXIE, self).__init__()
+        assert mode in ['train', 'eval']
+        if logger is None:
+            self.logger = logging.getLogger('PIXIE')
+            logger = self.logger
+        else:  
+            self.logger = logger
+
+        logger.info('PIXIE model initializing.')
         if config is None:
             self.cfg = cfg
         else:
             self.cfg = config
-            
+        
         self.device = device
         self.freeze_model = freeze_model
+        self.logger = logger
+        self.input_size = input_size
+        self.focal_length = input_size / 2.0 / math.tan(math.pi / 6.0)  # 60 degree
+        # self.focal_length = input_size / 2.0 / math.tan(math.pi / 6.0)  # 60 degree
+        self.project_type = project_type
+
+        logger.info(f'focal_length: {self.focal_length}')
         # parameters setting
         self.param_list_dict = {}
         for lst in self.cfg.params.keys():
             param_list = cfg.params.get(lst)
             self.param_list_dict[lst] = {i:cfg.model.get('n_'+i) for i in param_list}
         
-        print('PIXIE model creating..............................')
+        
         # Build the models
-        self._create_model()
+        # self._create_model(mode=mode)
+        self._create_model_new(mode=mode)
     
         # Set up the cropping modules used to generate face/hand crops from the body predictions
         self._setup_cropper()
-        print('PIXIE model created..............................')
+        
+        logger.info('PIXIE model initialized!')
 
     def _setup_cropper(self):
         self.Cropper = {}
@@ -65,7 +91,10 @@ class PIXIE(object):
                         scale=[scale_size, scale_size],
                         trans_scale = 0)
 
-    def _create_model(self):
+    
+    def _create_model(self, mode = 'eval'):
+        assert mode in ['train', 'eval']
+
         self.model_dict = {}
         # Build all image encoders
         # Hand encoder only works for right hand, for left hand, flip inputs and flip the results back
@@ -125,15 +154,149 @@ class PIXIE(object):
             print(f'pixie trained model path: {model_path} does not exist!')
             exit()
         # eval mode
-        for module in [self.Encoder, self.Regressor, self.Moderator, self.Extractor]:
-            for net in module.values():
-                net.eval()
+        if mode == 'eval':
+            for module in [self.Encoder, self.Regressor, self.Moderator, self.Extractor]:
+                for net in module.values():
+                    net.eval()
 
         if self.freeze_model:
             for module in [self.Encoder, self.Regressor, self.Moderator, self.Extractor]:
                 for net in module.values():
                     for param in net.parameters():
                         param.requires_grad = False
+
+
+    def _create_model_new(self, mode = 'train'):
+        # self.model_dict = {}
+        # Build all image encoders
+        # Hand encoder only works for right hand, for left hand, flip inputs and flip the results back
+        # self.Encoder = {}
+
+        self.Encoder = nn.ModuleDict()
+        self.Regressor = nn.ModuleDict()
+        self.Extractor = nn.ModuleDict()
+        self.Moderator = nn.ModuleDict()
+
+        for key in self.cfg.network.encoder.keys():
+            if self.cfg.network.encoder.get(key).type == 'resnet50':
+                self.Encoder[key] = ResnetEncoder(device= self.device).to(self.device)
+            elif self.cfg.network.encoder.get(key).type == 'hrnet':
+                self.Encoder[key] = HRNEncoder(device=self.device).to(self.device)
+            # self.model_dict[f'Encoder_{key}'] = self.Encoder[key].state_dict()
+            # print(f'Encoder_{key} created!')
+            # Encoder_body created!
+            # Encoder_head created!
+            # Encoder_hand created!
+
+        # Build the parameter regressors
+        # self.Regressor = {}
+        for key in self.cfg.network.regressor.keys():
+            n_output = sum(self.param_list_dict[f'{key}_list'].values())
+            channels = [2048] + self.cfg.network.regressor.get(key).channels + [n_output]
+            if self.cfg.network.regressor.get(key).type == 'mlp':
+                self.Regressor[key] = MLP(channels=channels).to(self.device)
+            # self.model_dict[f'Regressor_{key}'] = self.Regressor[key].state_dict()
+            # print(f'Regressor_{key} created!')
+            # Regressor_head_share created!
+            # Regressor_hand_share created!
+            # Regressor_body created!
+            # Regressor_head created!
+            # Regressor_hand created!
+
+        # Build the extractors
+        # to extract separate head/left hand/right hand feature from body feature
+        # self.Extractor = {}
+        for key in self.cfg.network.extractor.keys():
+            channels = [2048] + self.cfg.network.extractor.get(key).channels + [2048]
+            if self.cfg.network.extractor.get(key).type == 'mlp':
+                self.Extractor[key] = MLP(channels=channels).to(self.device)
+            # self.model_dict[f'Extractor_{key}'] = self.Extractor[key].state_dict()
+            # print(f'Extractor_{key} created!')
+            # Extractor_head_share created!
+            # Extractor_left_hand_share created!
+            # Extractor_right_hand_share created!
+
+        # Build the moderators
+        # self.Moderator = {}
+        for key in self.cfg.network.moderator.keys():
+            share_part = key.split('_')[0]
+            detach_inputs = self.cfg.network.moderator.get(key).detach_inputs
+            detach_feature = self.cfg.network.moderator.get(key).detach_feature
+            channels = [2048*2] + self.cfg.network.moderator.get(key).channels + [2]
+            self.Moderator[key] = TempSoftmaxFusion(
+                detach_inputs=detach_inputs, detach_feature=detach_feature,
+                channels=channels).to(self.device)
+            # self.model_dict[f'Moderator_{key}'] = self.Moderator[key].state_dict()
+            # print(f'Moderator_{key} created!')
+            # Moderator_head_share created!
+            # Moderator_hand_share created!
+        
+        # Build the SMPL-X body model, which we also use to represent faces and
+        # hands, using the relevant parts only
+        self.smplx = SMPLX(self.cfg.model).to(self.device)
+        self.part_indices = self.smplx.part_indices
+        # Build the FLAME texture space
+        if self.cfg.model.use_tex:
+            self.flametex = FLAMETex(self.cfg.model).to(self.device)
+        
+        #-- resume model
+        model_path = self.cfg.pretrained_modelpath
+        # if os.path.exists(model_path):
+        #     # checkpoint = torch.load(model_path)
+        #     # for key in self.model_dict.keys():
+        #     #     util.copy_state_dict(self.model_dict[key], checkpoint[key])
+        #     checkpoint = torch.load(model_path)
+        #     for key in checkpoint.keys():
+        #         if key in self.Encoder:
+        #             self.Encoder[key].load_state_dict(checkpoint[key])
+        #         elif key in self.Regressor:
+        #             self.Regressor[key].load_state_dict(checkpoint[key])
+        #         elif key in self.Extractor:
+        #             self.Extractor[key].load_state_dict(checkpoint[key])
+        #         elif key in self.Moderator:
+        #             self.Moderator[key].load_state_dict(checkpoint[key])
+                # self.logger.info(f'{key} loaded!')
+        if os.path.exists(model_path):
+            checkpoint = torch.load(model_path)
+            checkpoint_keys = set(checkpoint.keys())
+            module_keys = {
+                **{f'Encoder_{key}': self.Encoder[key] for key in self.Encoder.keys()},
+                **{f'Regressor_{key}': self.Regressor[key] for key in self.Regressor.keys()},
+                **{f'Extractor_{key}': self.Extractor[key] for key in self.Extractor.keys()},
+                **{f'Moderator_{key}': self.Moderator[key] for key in self.Moderator.keys()},
+            }
+
+            self.logger.info(f'Checkpoint keys: {checkpoint_keys}')
+            self.logger.info(f'Module keys: {module_keys.keys()}')
+
+            for key in checkpoint_keys:
+                if key in module_keys:
+                    module_keys[key].load_state_dict(checkpoint[key])
+                    self.logger.info(f'Loaded weights for {key}')
+                else:
+                    self.logger.warning(f'No matching module for key: {key}')
+
+
+        else:
+            print(f'pixie trained model path: {model_path} does not exist!')
+            if mode == 'eval':
+                exit()
+
+        # eval mode
+        if mode == 'eval':    
+            for module in [self.Encoder, self.Regressor, self.Moderator, self.Extractor]:
+                for net in module.values():
+                    net.eval()
+
+        if self.freeze_model:
+            self.freeze_parameters()
+
+    def freeze_parameters(self):
+        for module in [self.Encoder, self.Regressor, self.Moderator, self.Extractor]:
+            for net in module.values():
+                for param in net.parameters():
+                    param.requires_grad = False
+
 
     def decompose_code(self, code, num_dict):
         ''' Convert a flattened parameter vector to a dictionary of parameters
@@ -143,6 +306,9 @@ class PIXIE(object):
         for key in num_dict:
             end = start+int(num_dict[key])
             code_dict[key] = code[:, start:end]
+            # print(f'code_dict[{key}]', code_dict[key])
+            # code_dict[body_cam] tensor([[ 2.4311, -0.0078,  0.7342]], device='cuda:0')
+            # code_dict[global_pose] tensor([[ 2.0664e+00, -8.9392e-02, -1.9261e-02, -1.8139e+00,  3.8915e-04, 4.3193e-01]], device='cuda:0')
             start = end
         return code_dict
 
@@ -182,8 +348,8 @@ class PIXIE(object):
             cropped_points_dict[points_key] = cropped_points
         return cropped_image, cropped_points_dict
 
-    @torch.no_grad()
-    def encode(self, data, threthold=True, keep_local=True, copy_and_paste=False, body_only=False):
+    # @torch.no_grad()
+    def encode(self, data, threthold=True, keep_local=True, copy_and_paste=False, body_only=False, part_bboxes = None):
         ''' Encode images to smplx parameters
         Args:
             data: dict
@@ -206,7 +372,7 @@ class PIXIE(object):
         param_dict = {}
 
         # Encode features
-        for key in data.keys(): ## only body here
+        for key in data.keys(): ## only 'body' here
             part = key
             # encode feature
             feature[key] = {}
@@ -232,14 +398,24 @@ class PIXIE(object):
                 # extract part feature
                 for part_name in ['head', 'left_hand', 'right_hand']:
                     feature['body'][f'{part_name}_share'] = self.Extractor[f'{part_name}_share'](f_body)
+                    # print(f"feature['body']{part_name}_share", feature['body'][f'{part_name}_share'].shape)
+                    # feature['body'][head_share] torch.Size([bs, 2048])
+                    # feature['body'][left_hand_share] torch.Size([bs, 2048])
+                    # feature['body'][right_hand_share] torch.Size([bs, 2048])
                 
+                #print('data[key].keys()', data[key].keys()) # dict_keys(['image', 'name', 'imagepath', 'image_hd'])
                 # -- check if part crops are given, if not, crop parts by coarse body estimation
                 if 'head_image' not in data[key].keys() \
                     or 'left_hand_image' not in data[key].keys() \
                     or 'right_hand_image' not in data[key].keys():
                     #- run without fusion to get coarse estimation, for cropping parts
                     # body only
+
+                    # print('param_dict', param_dict) # param_dict {}
+                    ## get body parameters such as body_cam, global_pose, partbody_pose, neck_pose, shape, exp, head_pose, jaw_pose, left_hand_pose, left_wrist_pose, right_wrist_pose, right_hand_pose, tex, light
                     body_dict = self.decompose_code(self.Regressor[part](feature[key][part]), self.param_list_dict[part+'_list'])
+                    # print('body_dict[body_cam]', body_dict['body_cam']) # body_dict {'body_cam': tensor([[ 2.4310, -0.0078,  0.7342]], device='cuda:0')..........
+
                     # head share
                     head_share_dict = self.decompose_code(self.Regressor['head'+'_share'](feature[key]['head'+'_share']), self.param_list_dict['head'+'_share_list'])
                     # right hand share
@@ -250,6 +426,16 @@ class PIXIE(object):
                     left_hand_share_dict['left_hand_pose'] = left_hand_share_dict.pop('right_hand_pose')
                     left_hand_share_dict['left_wrist_pose'] = left_hand_share_dict.pop('right_wrist_pose')
                     param_dict[key] = {**body_dict, **head_share_dict, **left_hand_share_dict, **right_hand_share_dict}
+                    # print('22222222222222222222222222')
+                    # for k in param_dict[key].keys():
+                    #     if param_dict[key][k].shape[1] >6 or param_dict[key][k].shape[0] >6 :
+                    #         print(f'param_dict[{key}][{k}].shape', param_dict[key][k].shape)
+                    #     else:
+                    #         print(f'param_dict[{key}][{k}]', param_dict[key][k])
+                            
+                    # print('3333333333333')
+                    # param_dict[body][body_cam] tensor([[ 2.4310, -0.0078,  0.7342]], device='cuda:0')
+
                     if body_only:
                         param_dict['moderator_weight'] = None
                         return param_dict
@@ -261,9 +447,18 @@ class PIXIE(object):
                             'smplx_kpt': prediction_body_only['smplx_kpt'],
                             'trans_verts': prediction_body_only['transformed_vertices']
                         }
-                        cropped_image, cropped_joints_dict = self.part_from_body(data['body']['image_hd'], part_name, points_dict)
+                        # print(f'part_from_body begin...')
+                        if not part_bboxes is None:
+                            cropped_image, scales, left_pad, top_pad = crop_resize_image_batch(data['body']['image_hd'], part_bboxes[part_name], self.input_size)
+                        else:
+                            cropped_image, cropped_joints_dict = self.part_from_body(data['body']['image_hd'], part_name, points_dict)
+                            pass
+                        # print(f'cropped_image.shape', cropped_image.shape) #torch.Size([bs, 3, 224, 224])
                         data[key][part_name+'_image'] = cropped_image
+                        # print(f'part_from_body end...')
 
+                # print('data.keys()', data.keys()) # dict_keys(['body'])
+                # print('data['body'].keys()', data['body'].keys()) # dict_keys(['image', 'name', 'imagepath', 'image_hd', 'head_image', 'left_hand_image', 'right_hand_image'])
                 # -- encode features from part crops, then fuse feature using the weight from moderator
                 for part_name in ['head', 'left_hand', 'right_hand']:
                     part = part_name.split('_')[-1]
@@ -315,6 +510,41 @@ class PIXIE(object):
                     param_dict[key]['right_hand_pose'] = param_dict['body_right_hand']['right_hand_pose']
                     param_dict[key]['left_hand_pose'] = param_dict['body_left_hand']['right_hand_pose']
             
+            # print(f'param_dict[{key}].keys()', param_dict[key].keys())
+            # param_dict[body].keys() dict_keys(['body_cam', 'global_pose', 'partbody_pose', 'neck_pose', 'shape', 'exp', 
+            #                                    'head_pose', 'jaw_pose', 'left_hand_pose', 'left_wrist_pose', 'right_wrist_pose',
+            #                                    'right_hand_pose', 'tex', 'light'])
+            '''
+            
+            for k in param_dict[key].keys():
+                if param_dict[key][k].shape[1] >6 or param_dict[key][k].shape[0] >6 :
+                    print(f'param_dict[{key}][{k}].shape', param_dict[key][k].shape)
+                else:
+                    print(f'param_dict[{key}][{k}]', param_dict[key][k])
+            print('encoder done!')
+
+
+            param_dict[body][body_cam] tensor([[ 2.4310, -0.0078,  0.7342]], device='cuda:0')
+            param_dict[body][global_pose] tensor([[ 2.0664e+00, -8.9464e-02, -1.9356e-02, -1.8138e+00,  4.0811e-04,
+                    4.3193e-01]], device='cuda:0')
+            param_dict[body][partbody_pose].shape torch.Size([1, 102])
+            param_dict[body][neck_pose] tensor([[ 2.3059, -0.0821,  0.1069,  2.2914,  0.1425, -0.2337]],
+                device='cuda:0')
+            param_dict[body][shape].shape torch.Size([1, 200])
+            param_dict[body][exp].shape torch.Size([1, 50])
+            param_dict[body][head_pose] tensor([[ 3.5827, -0.1047, -0.1641, -3.6923,  0.2987, -0.5557]],
+                device='cuda:0')
+            param_dict[body][jaw_pose] tensor([[-0.0047,  0.0021, -0.0031]], device='cuda:0')
+            param_dict[body][left_hand_pose].shape torch.Size([1, 90])
+            param_dict[body][left_wrist_pose] tensor([[-0.0584, -0.7032,  1.2773, -0.0830, -0.1721,  0.6383]],
+                device='cuda:0')
+            param_dict[body][right_wrist_pose] tensor([[ 0.0451, -0.6116,  1.9713, -0.2885, -0.0780,  0.3659]],
+                device='cuda:0')
+            param_dict[body][right_hand_pose].shape torch.Size([1, 90])
+            param_dict[body][tex].shape torch.Size([1, 50])
+            param_dict[body][light].shape torch.Size([1, 27])
+            encoder done!
+            '''
         return param_dict
     
     def convert_pose(self, param_dict, param_type):
@@ -430,14 +660,15 @@ class PIXIE(object):
 
 
         # SMPLX
-        verts, landmarks, joints = self.smplx(
-            shape_params=param_dict['shape'],
-            expression_params=param_dict['exp'],
-            global_pose=param_dict['global_pose'],
-            body_pose=param_dict['body_pose'],
-            jaw_pose=param_dict['jaw_pose'],
-            left_hand_pose=param_dict['left_hand_pose'],
-            right_hand_pose=param_dict['right_hand_pose'])
+        with torch.no_grad():
+            verts, landmarks, joints = self.smplx(
+                shape_params=param_dict['shape'],
+                expression_params=param_dict['exp'],
+                global_pose=param_dict['global_pose'],
+                body_pose=param_dict['body_pose'],
+                jaw_pose=param_dict['jaw_pose'],
+                left_hand_pose=param_dict['left_hand_pose'],
+                right_hand_pose=param_dict['right_hand_pose'])
         
         prediction = {
             'vertices': verts,
@@ -453,10 +684,21 @@ class PIXIE(object):
         # print("joints.shape", joints.shape) # torch.Size([bs, 145, 3])
         # projection
         cam = param_dict[param_type + '_cam']
-        trans_verts = util.batch_orth_proj(verts, cam)
-        projected_landmarks = util.batch_orth_proj(landmarks, cam)[:,:,:2]
-        projected_joints = util.batch_orth_proj(joints, cam)[:,:,:2]
-
+        # print("cam.shape", cam.shape, cam) #  torch.Size([bs, 3]) tensor([[ 2.4310, -0.0078,  0.7342]], device='cuda:0')
+        
+        if self.project_type == 'orthogonal':
+            trans_verts = util.batch_orth_proj(verts, cam)
+            projected_landmarks = util.batch_orth_proj(landmarks, cam)[:,:,:2]
+            projected_joints = util.batch_orth_proj(joints, cam)[:,:,:2]
+        elif self.project_type == 'perspective':
+            img_size = (self.input_size, self.input_size)
+            trans_verts = util.batch_perspective_proj(verts, cam, img_size, focal_length=self.focal_length)
+            projected_landmarks = util.batch_perspective_proj(landmarks, cam, img_size, focal_length=self.focal_length)[:,:,:2]
+            projected_joints = util.batch_perspective_proj(joints, cam, img_size, focal_length=self.focal_length)[:,:,:2]
+        else:
+            raise ValueError('Unknown projection type: {}'.format(self.project_type))
+            exit()
+        
         # save predcition
         prediction = {
                     'vertices': verts,

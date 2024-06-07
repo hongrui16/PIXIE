@@ -90,13 +90,88 @@ def vertex_normals(vertices, faces):
 def batch_orth_proj(X, camera):
     '''
         X is N x num_verts x 3
-        camera is N x 3
     '''
     camera = camera.clone().view(-1, 1, 3)
     X_trans = X[:, :, :2] + camera[:, :, 1:]
     X_trans = torch.cat([X_trans, X[:,:,2:]], 2)
     Xn = (camera[:, :, 0:1] * X_trans)
     return Xn
+
+def transform_points(points):
+    """
+    Transform the points to correct the orientation.
+    
+    Parameters:
+    points (torch.Tensor): A tensor of shape (bs, n, 3) containing the point positions (vertices or joints).
+    
+    Returns:
+    torch.Tensor: Transformed points.
+    """
+    # Flip the y-axis and rotate around the z-axis
+    transformed_points = points.clone()
+    transformed_points[:, :, 1] = -transformed_points[:, :, 1]  # Flip y-axis
+    transform_matrix = torch.tensor([[1, 0, 0], [0, -1, 0], [0, 0, 1]], device=points.device, dtype=points.dtype)  # Ensure same dtype
+    transformed_points = torch.matmul(transformed_points, transform_matrix)
+    return transformed_points
+
+
+
+def adjust_output(output, min_val, max_val):
+    """
+    Adjusts the output from ReLU to a desired range [min_val, max_val].
+    """
+    return output * (max_val - min_val) + min_val
+
+def batch_perspective_proj(X, camera_output, image_size, focal_length = 2000.):
+    '''
+        X: BS x num_verts x 3
+        camera_output is BS x 3 (raw output from network with ReLU)
+        image_size is (height, width)
+        focal_length is fixed scalar
+    '''
+    # print('X.shape', X.shape)
+    # print('X:', X)
+    # print('camera_output.shape', camera_output.shape)
+    # print('camera_output:', camera_output)
+    
+    X = transform_points(X)
+    # print('X:', X.shape, X[0][:4])
+
+    # Adjust camera parameters to desired range
+    tx = adjust_output(camera_output[:, 0:1], -0.5, 0.5)
+    ty = adjust_output(camera_output[:, 1:2], -0.5, 0.5)
+    tz = adjust_output(camera_output[:, 2:3], -1., 5.)
+    
+    # Combine adjusted parameters
+    camera = torch.cat([tx, ty, tz], dim=1).view(-1, 1, 3)
+    # print('reshaped camera:', camera)
+    
+    # Fixed parameters
+    focal_length = torch.tensor(focal_length).view(1, 1, 1).to(X.device)  # Fixed focal length
+    cx = torch.tensor(image_size[1] / 2.0).view(1, 1, 1).to(X.device)  # Principal point x (image width / 2)
+    cy = torch.tensor(image_size[0] / 2.0).view(1, 1, 1).to(X.device)  # Principal point y (image height / 2)
+    
+    # Apply translation
+    X_trans = X + camera
+    # print('X_trans (after translation):', X_trans)
+    
+    # Apply perspective projection
+    u = focal_length * (X_trans[:, :, 0:1] / (X_trans[:, :, 2:3] + 1e-9)) + cx
+    v = focal_length * (X_trans[:, :, 1:2] / (X_trans[:, :, 2:3] + 1e-9)) + cy
+
+    X_proj = torch.cat([u, v], dim=2)
+    # print('X_proj (perspective projection):', X_proj.shape)
+
+    # Combine u, v with the original z to maintain shape [BS, N, 3]
+    # X_proj = torch.cat([u, v, X_trans[:, :, 2:3]], dim=2)
+
+
+    ## clip to image size
+    X_proj = torch.clamp(X_proj[:, :, :2], 0, image_size[1]-1)
+    # print('X_proj.shape', X_proj.shape, X_proj[:,:5])
+    
+    return X_proj
+
 
 ##### borrowed from https://github.com/vchoutas/expose
 DIM_FLIP = np.array([1, -1, -1], dtype=np.float32)

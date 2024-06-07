@@ -4,7 +4,16 @@ class ComputeL2Loss(torch.nn.Module):
     def __init__(self):
         super(ComputeL2Loss, self).__init__()
     
-    def forward(self, pred, target, valid_mask=None, confidence = None, reduction='mean'):
+    def forward(self, pred, target, valid_mask=None, confidence=None, reduction='mean', loss_type = 'dist'):
+        if loss_type == 'l2':
+            return self.compute_l2_loss(pred, target, valid_mask, confidence, reduction)
+        elif loss_type == 'dist':
+            return self.compute_dist_loss(pred, target, valid_mask, confidence, reduction)
+        else:
+            raise ValueError(f"Unknown loss type: {loss_type}")
+
+
+    def compute_l2_loss(self, pred, target, valid_mask=None, confidence = None, reduction='mean'):
         """
         计算L2损失
         参数:
@@ -51,3 +60,27 @@ class ComputeL2Loss(torch.nn.Module):
             loss = torch.mean((pred - target) ** 2)
         
         return loss
+    
+    def compute_dist_loss(self, pred, target, valid_mask=None, confidence = None, reduction='mean'):
+        """
+        Compute the loss using per-point Euclidean distance.
+
+        Parameters:
+        pred (torch.Tensor): Predicted points of shape (bs, n, 2).
+        target (torch.Tensor): Ground truth points of shape (bs, n, 2).
+        valid_mask (torch.Tensor): Validity mask of shape (bs, n, 2).
+
+        Returns:
+        torch.Tensor: Computed loss.
+        """
+        # Calculate per-point Euclidean distance
+        distance = torch.sqrt(torch.sum((pred - target) ** 2, dim=-1))
+        
+        # Apply the validity mask
+        masked_distance = distance * valid_mask[..., 0]  # Only consider the validity of the first dimension
+        
+        # Compute the loss
+        loss = torch.sum(masked_distance) / (torch.sum(valid_mask[..., 0]) + 1e-6)
+        
+        return loss
+

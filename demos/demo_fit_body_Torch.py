@@ -11,13 +11,41 @@ import plotly.graph_objects as go
 import shutil
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from pixielib.pixie import PIXIE
+from pixielib.pixieTorch import PIXIE
+# from pixielib.pixieTemp import PIXIE
 # from pixielib.pixie_parallel import PIXIE
 from pixielib.visualizer import Visualizer
 from pixielib.datasets.body_datasets import TestData
 from pixielib.utils import util
 from pixielib.utils.config import cfg as pixie_cfg
 from pixielib.utils.tensor_cropper import transform_points
+from pixielib.models.smplx_openpose_joints import selected_mapping, openpose_in_smplx_mapping
+
+
+def save_obj(vertices, filename):
+    """
+    Save a mesh in .obj format.
+
+    Parameters:
+    vertices (torch.Tensor): A tensor of shape (N, 3) containing the vertex positions.
+    faces (np.ndarray): A numpy array of shape (M, 3) containing the face indices.
+    filename (str): The name of the file to save the mesh to.
+    """
+    faces_filepath = r'C:\Users\hongr\Documents\GMU_research\computerVersion\hand_modeling\PIXIE\data\SMPLX_NEUTRAL_2020.npz'
+    all_data = np.load(faces_filepath, allow_pickle=True)
+    faces = all_data['f']
+
+
+
+    faces = faces + 1  # OBJ files are 1-indexed
+
+    with open(filename, 'w') as f:
+        for vertex in vertices:
+            f.write(f'v {vertex[0]} {vertex[1]} {vertex[2]}\n')
+        for face in faces:
+            f.write(f'f {face[0]} {face[1]} {face[2]}\n')
+
+
 
 class vis_mesh_points():
     def __init__(self, height=1000, width=1000, face_filepath = None):
@@ -130,76 +158,8 @@ def plotly_save_point_cloud(points, file_path='plotly_3d_plot.html'):
 
 
 def main(args):
-    SMPLX_names = ['pelvis', 'left_hip', 'right_hip', 'spine1', 'left_knee', 
-                   'right_knee', 'spine2', 'left_ankle', 'right_ankle', 'spine3', 
-                   'left_foot', 'right_foot', 'neck', 'left_collar', 'right_collar',
-                     'head', 'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow', 
-                     'left_wrist', 'right_wrist', 'jaw', 'left_eye_smplx', 'right_eye_smplx', 
-                     'left_index1', 'left_index2', 'left_index3', 'left_middle1', 'left_middle2', 
-                     'left_middle3', 'left_pinky1', 'left_pinky2', 'left_pinky3', 'left_ring1', 
-                     'left_ring2', 'left_ring3', 'left_thumb1', 'left_thumb2', 'left_thumb3', 
-                     'right_index1', 'right_index2', 'right_index3', 'right_middle1', 'right_middle2', 
-                     'right_middle3', 'right_pinky1', 'right_pinky2', 'right_pinky3', 'right_ring1', 
-                     'right_ring2', 'right_ring3', 'right_thumb1', 'right_thumb2', 'right_thumb3', 
-                     'right_eye_brow1', 'right_eye_brow2', 'right_eye_brow3', 'right_eye_brow4', 'right_eye_brow5', 
-                     'left_eye_brow5', 'left_eye_brow4', 'left_eye_brow3', 'left_eye_brow2', 'left_eye_brow1', 
-                     'nose1', 'nose2', 'nose3', 'nose4', 'right_nose_2', 'right_nose_1', 'nose_middle', 
-                     'left_nose_1', 'left_nose_2', 'right_eye1', 'right_eye2', 'right_eye3', 
-                     'right_eye4', 'right_eye5', 'right_eye6', 'left_eye4', 'left_eye3', 'left_eye2', 
-                     'left_eye1', 'left_eye6', 'left_eye5', 'right_mouth_1', 'right_mouth_2', 
-                     'right_mouth_3', 'mouth_top', 'left_mouth_3', 'left_mouth_2', 'left_mouth_1', 
-                     'left_mouth_5', 'left_mouth_4', 'mouth_bottom', 'right_mouth_4', 'right_mouth_5', 
-                     'right_lip_1', 'right_lip_2', 'lip_top', 'left_lip_2', 'left_lip_1', 'left_lip_3', 
-                     'lip_bottom', 'right_lip_3', 'right_contour_1', 'right_contour_2', 'right_contour_3', 
-                     'right_contour_4', 'right_contour_5', 'right_contour_6', 'right_contour_7', 'right_contour_8', 
-                     'contour_middle', 'left_contour_8', 'left_contour_7', 'left_contour_6', 'left_contour_5', 
-                     'left_contour_4', 'left_contour_3', 'left_contour_2', 'left_contour_1', 'head_top', 
-                     'left_big_toe', 'left_ear', 'left_eye', 'left_heel', 'left_index', 'left_middle', 
-                     'left_pinky', 'left_ring', 'left_small_toe', 'left_thumb', 'nose', 'right_big_toe', 
-                     'right_ear', 'right_eye', 'right_heel', 'right_index', 'right_middle', 'right_pinky', 
-                     'right_ring', 'right_small_toe', 'right_thumb']
     
-    print('SMPLX_names', len(SMPLX_names)) ###145
-    facial_selected_keypoints = [
-    "right_eye_brow1", "right_eye_brow2", "right_eye_brow3", "right_eye_brow4", "right_eye_brow5",
-    "left_eye_brow1", "left_eye_brow2", "left_eye_brow3", "left_eye_brow4", "left_eye_brow5",
-    "right_eye1", "right_eye2", "right_eye3", "right_eye4", "right_eye5", "right_eye6",
-    "left_eye1", "left_eye2", "left_eye3", "left_eye4", "left_eye5", "left_eye6",
-    "mouth_top", "mouth_bottom",
-    "right_mouth_1", "right_mouth_2", "right_mouth_3", "right_mouth_4", "right_mouth_5",
-    "left_mouth_1", "left_mouth_2", "left_mouth_3", "left_mouth_4", "left_mouth_5"
-    ]
-    main_body_selected_keypoints = [
-    "spine1",
-    "spine2",
-    "spine3",
-    "neck",
-    "left_collar",
-    "right_collar",
-    "left_shoulder",
-    "right_shoulder",
-    "left_elbow",
-    "right_elbow",
-    "left_wrist",
-    "right_wrist",
-    "jaw",
-    ]
-    hands_selected_keypoints = [
-    "left_thumb1", "left_thumb2", "left_thumb3", "left_thumb",
-    "left_index1", "left_index2", "left_index3", "left_index",
-    "left_middle1", "left_middle2", "left_middle3", "left_middle",
-    "left_ring1", "left_ring2", "left_ring3", "left_ring",
-    "left_pinky1", "left_pinky2", "left_pinky3", "left_pinky",
-    "right_thumb1", "right_thumb2", "right_thumb3", "right_thumb",
-    "right_index1", "right_index2", "right_index3", "right_index",
-    "right_middle1", "right_middle2", "right_middle3", "right_middle",
-    "right_ring1", "right_ring2", "right_ring3", "right_ring",
-    "right_pinky1", "right_pinky2", "right_pinky3", "right_pinky",
-    ]
 
-    selected_keypoints = main_body_selected_keypoints + hands_selected_keypoints + facial_selected_keypoints
-    selected_indicecs = [SMPLX_names.index(k) for k in selected_keypoints]
-    mapping = np.array(selected_indicecs, dtype=np.int32)
     
     ## write SMPLX_names to a txt file, every element in a line
     # with open('SMPLX_names.txt', 'w') as f:
@@ -211,7 +171,7 @@ def main(args):
     args.inputpath = r'C:\Users\hongr\Documents\GMU_research\computerVersion\hand_modeling\smile_data\color_openpose\images'
     args.inputpath = r'C:\Users\hongr\Documents\GMU_research\computerVersion\hand_modeling\expose\samples'
     args.inputpath = r'C:\Users\hongr\Documents\GMU_research\computerVersion\hand_modeling\signLangWord\WLASL_examples\images'
-    # args.inputpath = r'C:\Users\hongr\Documents\GMU_research\computerVersion\hand_modeling\PIXIE\TestSamples\body\singleMan1image\images'
+    args.inputpath = r'C:\Users\hongr\Documents\GMU_research\computerVersion\hand_modeling\PIXIE\TestSamples\body\singleMan1image\images'
 
     args.rasterizer_type = 'pytorch3d'
     args.lightTex = False
@@ -237,7 +197,9 @@ def main(args):
 
     #-- run PIXIE
     pixie_cfg.model.use_tex = args.useTex
-    pixie = PIXIE(config = pixie_cfg, device=device)
+    pixie = PIXIE(config = pixie_cfg, device=device, mode = 'eval')
+
+    pixie.eval()
 
     skip_pytorch3d = True
     if skip_pytorch3d:
@@ -306,9 +268,10 @@ def main(args):
         '''
         points = opdict['joints'].cpu().numpy().squeeze()            
         vertices = opdict['vertices'].cpu().numpy().squeeze()
+        save_obj(vertices, f'{name}.obj')
         # print('.........points.shape', points.shape) #  (bs, 145, 3)
         # print('vertices.shape', vertices.shape) #(bs, 10475, 3)
-        new_points = points[mapping]
+        new_points = points[selected_mapping]
         ## save the points to a numpy file
         # np.save(f'{name}_points.npy', points)
         if not debug:
@@ -326,7 +289,7 @@ def main(args):
         # 结束可视化
         
 
-        if i > 50:
+        if i > 5:
             break
 
         if skip_pytorch3d:

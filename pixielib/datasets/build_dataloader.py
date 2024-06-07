@@ -12,7 +12,7 @@ from . import body_datasets
 from . import openpose_dataset
 
 
-def build_dataloader(data_dir, dataset_type = 'body', batch_size=1, split = None, device = 'cpu', logger = None):
+def build_dataloader(data_dir, dataset_type = 'body', batch_size=1, split = None, device = 'cpu', logger = None, args = None):
     if dataset_type == 'body':
         dataset = body_datasets.TestData(testpath = data_dir, device = device)
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False,
@@ -22,7 +22,7 @@ def build_dataloader(data_dir, dataset_type = 'body', batch_size=1, split = None
         return dataset, dataloader
     
     elif dataset_type == 'openpose':
-        dataset = openpose_dataset.OpenPoseDataset(data_dir = data_dir, split = split, logger = logger)
+        dataset = openpose_dataset.OpenPoseDataset(data_dir = data_dir, split = split, logger = logger, args = args)
         if split == 'train':
             drop_last = True
             shuffle = True
