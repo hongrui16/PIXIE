@@ -44,7 +44,7 @@ class Worker:
         
         self.input_data_dir = args.data_dir
         log_dir = args.log_dir
-
+        batch_size = args.batch_size
         self.dataset_type = 'openpose'
         self.detector_name = 'rcnn'
         self.input_size = 224
@@ -53,9 +53,9 @@ class Worker:
         self.max_epoch = args.max_epoch
         self.debug = False or debug
         self.vis = False
-
+        self.dump_img = True
         if not self.debug:
-            batch_size = 16
+            batch_size = batch_size
             if self.vis:
                 self.mesh_point_visualizer = vis_mesh_points()
         else:
@@ -64,7 +64,8 @@ class Worker:
         log_dir = os.path.join(log_dir, "{}_{:%Y-%m-%d_%H-%M-%S}".format(self.dataset_type, datetime.now()))
         self.log_dir = log_dir
         os.makedirs(log_dir, exist_ok=True)
-
+        self.dump_img_dir = os.path.join(log_dir, 'dump_img')
+        os.makedirs(self.dump_img_dir, exist_ok=True)
         
         
         
@@ -159,7 +160,7 @@ class Worker:
             self.optimizer.zero_grad()
             
             image = batch['image'].to(self.device)
-            # image_name_prefix = batch['name']
+            image_name_prefix = batch['name']
 
             gt_pose_keypoints_2d = batch['pose_keypoints_2d'].to(self.device)
             gt_hand_left_keypoints_2d = batch['hand_left_keypoints_2d'].to(self.device)
@@ -254,7 +255,7 @@ class Worker:
 
             projected_2d_joints = prediction['smplx_kpt']
 
-            predicted_openpose_keypoints_2d = projected_2d_joints[:, self.openpose_in_smplx_mapping]
+            pred_openpose_keypoints_2d = projected_2d_joints[:, self.openpose_in_smplx_mapping]
 
             gt_openpose_keypoints_2d = torch.cat([gt_pose_keypoints_2d, gt_hand_left_keypoints_2d, 
                                                gt_hand_right_keypoints_2d, gt_face_keypoints_2d], dim=1)
@@ -262,12 +263,12 @@ class Worker:
             gt_openpose_keypoints_2d_coord = gt_openpose_keypoints_2d[:, :, :2]
             gt_openpose_keypoints_2d_valid_mask = gt_openpose_keypoints_2d[:, :, 2] > points_confidence_threshold
             gt_openpose_keypoints_2d_confidence = gt_openpose_keypoints_2d[:, :, 2]
-            loss = self.criteria(predicted_openpose_keypoints_2d, gt_openpose_keypoints_2d_coord, 
+            loss = self.criteria(pred_openpose_keypoints_2d, gt_openpose_keypoints_2d_coord, 
                                  confidence = gt_openpose_keypoints_2d_confidence,
                                 #  valid_mask = gt_openpose_keypoints_2d_valid_mask,
                                  )
 
-            print('loss:', loss.item())
+            # print('loss:', loss.item())
             # backward & optimize
             loss.backward()
             self.optimizer.step()
@@ -277,6 +278,18 @@ class Worker:
             loss_epoch.append(loss.item())
             if self.debug:
                 break
+        
+        ## draw keypoints on image
+        if self.dump_img:
+            for i in range(cropped_images.shape[0]):
+                img = cropped_images[i].cpu().numpy().transpose(1, 2, 0)
+                img = (img * 255).astype(np.uint8)
+                gt_kpts = gt_openpose_keypoints_2d_coord[i].cpu().numpy()
+                pred_kpts = pred_openpose_keypoints_2d[i].cpu().numpy()
+                img_name = f'epoch{str(epoch).rjust(3)}_{image_name_prefix[i]}'
+                self.draw_kpts_on_image(img, gt_kpts[:25], pred_kpts[:25], img_name)
+                if i > 3:
+                    break
 
         loss_epoch = sum(loss_epoch)/len(loss_epoch)
         return loss_epoch
@@ -307,6 +320,24 @@ class Worker:
             self.logger.info('')
         self.logger.info(f"Finish training")
     
+    def draw_kpts_on_image(self, image, gt_kpts, pred_kpts, img_name):
+        '''
+        image: (H, W, 3)
+        gt_kpts: (N, 2)
+        pred_kpts: (N, 2)
+        '''
+        gt_color = (0, 255, 0)
+        pred_color = (0, 125, 255)
+        for kpt in gt_kpts:
+            x, y = kpt
+            gt_img = cv2.circle(image.copy(), (int(x), int(y)), 2, gt_color, -1)
+        for kpt in pred_kpts:
+            x, y = kpt
+            pred_img = cv2.circle(image, (int(x), int(y)), 2, pred_color, -1)
+        imgs = np.hstack((gt_img, pred_img))
+        img_filepath = os.path.join(self.dump_img_dir, f'{img_name}.jpg')
+        cv2.imwrite(img_filepath, imgs)
+
     
     def save_checkpoint(self, dict_saved, save_dir, is_best = False):
         if is_best:
@@ -327,6 +358,7 @@ if __name__ == '__main__':
     parser.add_argument('--learning_rate', type=float, default=0.0001, help='learning rate')
     parser.add_argument('--debug', action='store_true', help='debug mode')
     parser.add_argument('--max_epoch', type=int, default=100, help='max epoch')
+    parser.add_argument('--batch_size', type=int, default=16, help='batch size')
     args = parser.parse_args()
 
     worker = Worker(debug = args.debug, args = args)

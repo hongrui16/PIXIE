@@ -232,7 +232,7 @@ class PIXIE(nn.Module):
             cropped_points_dict[points_key] = cropped_points
         return cropped_image, cropped_points_dict
 
-    @torch.no_grad()
+    # @torch.no_grad()
     def encode(self, data, threthold=True, keep_local=True, copy_and_paste=False, body_only=False):
         ''' Encode images to smplx parameters
         Args:
@@ -537,14 +537,15 @@ class PIXIE(nn.Module):
 
 
         # SMPLX
-        verts, landmarks, joints = self.smplx(
-            shape_params=param_dict['shape'],
-            expression_params=param_dict['exp'],
-            global_pose=param_dict['global_pose'],
-            body_pose=param_dict['body_pose'],
-            jaw_pose=param_dict['jaw_pose'],
-            left_hand_pose=param_dict['left_hand_pose'],
-            right_hand_pose=param_dict['right_hand_pose'])
+        with torch.no_grad():
+            verts, landmarks, joints = self.smplx(
+                shape_params=param_dict['shape'],
+                expression_params=param_dict['exp'],
+                global_pose=param_dict['global_pose'],
+                body_pose=param_dict['body_pose'],
+                jaw_pose=param_dict['jaw_pose'],
+                left_hand_pose=param_dict['left_hand_pose'],
+                right_hand_pose=param_dict['right_hand_pose'])
         
         prediction = {
             'vertices': verts,

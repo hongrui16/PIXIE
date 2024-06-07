@@ -45,7 +45,7 @@ class FasterRCNN(object):
         self.model.eval()
         self.device = device
         self.input_size = 256
-        print('FasterRCNN initialized.................................')
+        print('FasterRCNN initialized!')
 
     @torch.no_grad()
     def run(self, input):
@@ -145,7 +145,7 @@ class FasterRCNN(object):
 # TODO
 class Yolov4(object):
     def __init__(self, device='cuda:0'):
-        print('Yolov4 initialized.....................................')
+        print('Yolov4 initialized!')
 
         pass
 
@@ -181,7 +181,7 @@ class KeypointRCNN(object):
         'right_ankle'
     '''
     def __init__(self, device='cuda:0'):  
-        print('KeypointRCNN initialized.........................')
+        print('KeypointRCNN initialized!')
 
         import torchvision
         # self.model = torchvision.models.detection.keypointrcnn_resnet50_fpn(pretrained=True)
